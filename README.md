@@ -25,7 +25,7 @@ Under private downloading (or stories/highlights), using a VPN never hurts, but 
 For stories, when you download a story from a user, it will need to request the user page to find their ID. It will cache this ID in a `user_cache.json` in the same directory that the program file sits. Anytime you re-download from the same person, it will use this cached ID and prevent another request. It will request another if the username changes.
 
 ## TODO:
-- [ ] Make private mode work for highlights, reels and posts.
+- [x] Make private mode work for highlights, reels and posts.
 - [ ] Add method to download profile picture along with current stats (posts, followers, following) as well as BIO.
 - [ ] Add method to download an entire profile. If rate limited, pause and wait for interaction from user after VPN IP changes. This will not be available for private pages. Too much risk.
 - [ ] Add configuration to decide a lot of specifics, such as where to download each type of post/reel/story/highlight as well as what information to keep alongside it.

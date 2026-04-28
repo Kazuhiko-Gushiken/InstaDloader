@@ -163,12 +163,21 @@ def download_reel(url, folder, username, reel_shortcode):
 
     print(f"Downloaded: {filename}")
 
-def handle_post(shortcode):
+def handle_post(shortcode, session):
     DOC_ID = 8845758582119845 #if this expires, grab any post, throw it into the snapinsta private downloader and replace with a new doc id.
 
     query_url = f"https://www.instagram.com/graphql/query/?doc_id={DOC_ID}&variables=%7B%22shortcode%22%3A%22{shortcode}%22%2C%22fetch_tagged_user_count%22%3Anull%2C%22hoisted_comment_id%22%3Anull%2C%22hoisted_reply_id%22%3Anull%7D"
     
-    queryql = requests.get(query_url, stream=True)
+    headers = {
+        "User-Agent": "Mozilla/5.0",
+        "X-Requested-With": "XMLHttpRequest",
+    }
+
+    if session.is_private:
+        queryql = session.get(query_url, stream=True, headers=headers)
+    else:
+        queryql = requests.get(query_url, stream=True, headers=headers)
+
     queryql.raise_for_status()
 
     data = queryql.json()
@@ -267,7 +276,16 @@ def handle_post(shortcode):
                 download_video(possible_video, folder_path, i) # if has video in the node, grab the video instead of the thumbnail
             else:
                 download_photo(highest_res, folder_path, i)
-            time.sleep(1)
+            
+            if session.is_private:
+                delay = random.uniform(8, 15)
+                time.sleep(delay)
+                print(f"{delay}s delay.")
+            else:
+                delay = random.uniform(2,4)
+                time.sleep(delay)
+                print(f"{delay}s delay.")
+
     else:
         if media.get("is_video"):
             video_url = media.get("video_url")
@@ -279,6 +297,15 @@ def handle_post(shortcode):
         else:
             highest_res = media["display_resources"][-1]["src"]
             download_photo(highest_res, folder_path, 1)
+        
+        if session.is_private:
+            delay = random.uniform(8, 15)
+            time.sleep(delay)
+            print(f"{delay}s delay.")
+        else:
+            delay = random.uniform(2,4)
+            time.sleep(delay)
+            print(f"{delay}s delay.")
 
     print("Done.")
 
@@ -400,9 +427,13 @@ def handle_story(story_username, session):
             }
 
             if session.is_private:
-                time.sleep(random.uniform(8, 15))
+                delay = random.uniform(8, 15)
+                time.sleep(delay)
+                print(f"{delay}s delay.")
             else:
-                time.sleep(random.uniform(2,4))
+                delay = random.uniform(2,4)
+                time.sleep(delay)
+                print(f"{delay}s delay.")
             
         except Exception as e:
             print(f"Error processing item: {e}")
@@ -541,9 +572,13 @@ def handle_highlight(highlight_id, session):
             }
 
             if session.is_private:
-                time.sleep(random.uniform(8, 15))
+                delay = random.uniform(8, 15)
+                time.sleep(delay)
+                print(f"{delay}s delay.")
             else:
-                time.sleep(random.uniform(2,4))
+                delay = random.uniform(2,4)
+                time.sleep(delay)
+                print(f"{delay}s delay.")
 
         except Exception as e:
             print(f"Error processing item: {e}")
@@ -559,21 +594,30 @@ def handle_highlight(highlight_id, session):
     
     print("Highlight sync complete")
 
-def handle_reel(reel_shortcode):
+def handle_reel(reel_shortcode, session):
     DOC_ID = 8845758582119845 #if this expires, grab any post, throw it into the snapinsta private downloader and replace with a new doc id.
 
     query_url = f"https://www.instagram.com/graphql/query/?doc_id={DOC_ID}&variables=%7B%22shortcode%22%3A%22{reel_shortcode}%22%2C%22fetch_tagged_user_count%22%3Anull%2C%22hoisted_comment_id%22%3Anull%2C%22hoisted_reply_id%22%3Anull%7D"
     
-    queryql = requests.get(query_url, stream=True)
+    headers = {
+        "User-Agent": "Mozilla/5.0",
+        "X-Requested-With": "XMLHttpRequest",
+    }
+
+    if session.is_private:
+        queryql = session.get(query_url, stream=True, headers=headers)
+    else:
+        queryql = requests.get(query_url, stream=True, headers=headers)
+
     queryql.raise_for_status()
 
     data = queryql.json()
 
     media = data["data"]["xdt_shortcode_media"]
 
-    process_reel(media, data)
+    process_reel(media, data, session)
 
-def process_reel(media, data):
+def process_reel(media, data, session):
     shortcode = media["shortcode"]
     username = media["owner"]["username"]
 
@@ -658,7 +702,15 @@ def process_reel(media, data):
                 download_reel(possible_video, reels_path, username, shortcode) # if has video in the node, grab the video instead of the thumbnail
             else:
                 download_photo(highest_res, reels_path, i)
-            time.sleep(1)
+            
+            if session.is_private:
+                delay = random.uniform(8, 15)
+                time.sleep(delay)
+                print(f"{delay}s delay.")
+            else:
+                delay = random.uniform(2,4)
+                time.sleep(delay)
+                print(f"{delay}s delay.")
     else:
         if media.get("is_video"):
             video_url = media.get("video_url")
@@ -670,6 +722,15 @@ def process_reel(media, data):
         else:
             highest_res = media["display_resources"][-1]["src"]
             download_photo(highest_res, reels_path, 1)
+        
+        if session.is_private:
+            delay = random.uniform(8, 15)
+            time.sleep(delay)
+            print(f"{delay}s delay.")
+        else:
+            delay = random.uniform(2,4)
+            time.sleep(delay)
+            print(f"{delay}s delay.")
 
     print("Done.")
 
@@ -713,7 +774,7 @@ def main():
     if post_match:
         shortcode = post_match.group(1)
         print("Detected POST:", shortcode)
-        handle_post(shortcode)
+        handle_post(shortcode, session)
     elif highlight_match:
         highlight_id = highlight_match.group(1)
         highlight_id = int(highlight_id)
@@ -721,7 +782,7 @@ def main():
     elif reel_match:
         reel_shortcode = reel_match.group(1)
         print("Detected Reel:", reel_shortcode)
-        handle_reel(reel_shortcode)
+        handle_reel(reel_shortcode, session)
     elif story_match:
         story_username = story_match.group(1)
         print("Detected Story:", story_username)
