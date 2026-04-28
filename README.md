@@ -1,4 +1,4 @@
-# Instagram Downloader
+# InstaDloader
 
 This script will parse, query, and download almost anything posted to Instagram:
 - Posts
