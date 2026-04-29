@@ -25,6 +25,32 @@ CACHE_FILE = os.path.join(SCRIPT_DIR, "user_cache.json") # this stores user ids 
 # https://github.com/scrapfly/scrapfly-scrapers/tree/main/instagram-scraper
 # =================
 
+#DEFAULT_CONFIG = {
+#    "output_dir": "",
+#    "post_output_dir": ""
+#} shortcode, username, user_id
+
+#if not os.path.exists("idl_config.json"):
+#    with open("idl_config.json", "w") as f:
+#        json.dump(DEFAULT_CONFIG, f, indent=4)
+        
+#with open("config.json", "r") as f:
+#    config = json.load(f)
+
+#def get_output_dir(config):
+#    raw = config.get("output_dir")
+#
+#    if not raw:
+#        return Path.cwd()
+#    
+#    p = Path(raw).expanduser()
+#    return p if p.is_absolute() else Path.cwd() / p
+
+#output_dir = get_output_dir(config)
+#output_dir.mkdir(parents=True, exist_ok=True)
+
+
+
 def load_cache():
     if not os.path.exists(CACHE_FILE):
         return {}
