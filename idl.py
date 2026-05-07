@@ -104,7 +104,7 @@ def get_user_id(username, session=None):
         print("API failed:", e)
 
         try:
-            user_id = get_user_id_graphql(username)
+            user_id = get_user_id_graphql(username) #todo: make this use session if session is required.
             print("User ID from GraphQL")
         except Exception as e:
             print("GraphQL failed:", e)
