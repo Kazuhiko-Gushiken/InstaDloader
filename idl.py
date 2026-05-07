@@ -25,32 +25,6 @@ CACHE_FILE = os.path.join(SCRIPT_DIR, "user_cache.json") # this stores user ids 
 # https://github.com/scrapfly/scrapfly-scrapers/tree/main/instagram-scraper
 # =================
 
-#DEFAULT_CONFIG = {
-#    "output_dir": "",
-#    "post_output_dir": ""
-#} shortcode, username, user_id
-
-#if not os.path.exists("idl_config.json"):
-#    with open("idl_config.json", "w") as f:
-#        json.dump(DEFAULT_CONFIG, f, indent=4)
-        
-#with open("config.json", "r") as f:
-#    config = json.load(f)
-
-#def get_output_dir(config):
-#    raw = config.get("output_dir")
-#
-#    if not raw:
-#        return Path.cwd()
-#    
-#    p = Path(raw).expanduser()
-#    return p if p.is_absolute() else Path.cwd() / p
-
-#output_dir = get_output_dir(config)
-#output_dir.mkdir(parents=True, exist_ok=True)
-
-
-
 def load_cache():
     if not os.path.exists(CACHE_FILE):
         return {}
@@ -60,22 +34,102 @@ def load_cache():
             return json.load(f)
     except:
         return {}
-
-def get_user_id(username, session=None):
-    url = f"https://www.instagram.com/{username}/"
-    headers = {"User_Agent": "Mozilla/5.0"}
     
+def get_user_id_api(username, session=None):
+    url = f"https://i.instagram.com/api/v1/users/web_profile_info/?username={username}"
+
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+        "X-IG-App-ID": "936619743392459",
+        "Accept": "application/json",
+        "Referer": "https://www.instagram.com/",
+    }
+
     res = requests.get(url, headers=headers)
 
-    if '"profilePage_' not in res.text and session:
-        res = session.get(url, headers=headers)
-        print("Used session for user ID")
-
-    match = re.search(r'"profilePage_(\d+)"', res.text)
-    if not match:
-        raise ValueError("Could not find user ID in page source")
+    try:
+        data = res.json()
+    except:
+        raise ValueError("API returned non-JSON")
     
-    return match.group(1)
+    if "data" in data and "user" in data["data"]:
+        print("API success (no session)")
+        return data["data"]["user"]["id"]
+    
+    if session:
+        print("API retry with session")
+        res = session.get(url, headers=headers)
+        data = res.json()
+
+        if "data" in data and "user" in data["data"]:
+            print("API seccess (with session)")
+            return data["data"]["user"]["id"]
+
+    raise ValueError(f"API failed: data")
+
+def get_user_id_graphql(username):
+    DOC_ID = "8759034877476257" #graphql working doc_id
+
+    url = f"https://www.instagram.com/graphql/query/?doc_id={DOC_ID}&variables=%7B%22data%22%3A%7B%22count%22%3A12%2C%22include_relationship_info%22%3Atrue%2C%22latest_besties_reel_media%22%3Atrue%2C%22latest_reel_media%22%3Atrue%7D%2C%22username%22%3A%22{username}%22%2C%22__relay_internal__pv__PolarisIsLoggedInrelayprovider%22%3Atrue%2C%22__relay_internal__pv__PolarisFeedShareMenurelayprovider%22%3Atrue%7D"
+
+    headers = {
+        "User-Agent": "Mozilla/5.0",
+        "X-Requested-With": "XMLHttpRequest",
+    }
+
+    res = requests.get(url, headers=headers)
+    res.raise_for_status()
+
+    data = res.json()
+
+    edges = data["data"]["xdt_api__v1__feed__user_timeline_graphql_connection"]["edges"]
+
+    if not edges:
+        raise ValueError("GraphQL failed: no posts (edges empty)")
+
+    return edges[0]["node"]["user"]["id"]
+
+def get_user_id(username, session=None):
+    cache = load_cache()
+
+    if username in cache:
+        print("Used cached username.")
+        return cache[username]
+    
+    #api
+    try:
+        user_id = get_user_id_api(username, session)
+        print("UserID from API")
+    except Exception as e:
+        print("API failed:", e)
+
+        try:
+            user_id = get_user_id_graphql(username)
+            print("User ID from GraphQL")
+        except Exception as e:
+            print("GraphQL failed:", e)
+
+            try:
+                url = f"https://www.instagram.com/{username}/"
+                headers = {"User-Agent": "Mozilla/5.0"}
+
+                res = requests.get(url, headers=headers)
+
+                if '"profilePage_' not in res.text and session:
+                    res = session.get(url, headers=headers)
+                    print("Used session for HTML fallback")
+
+                match = re.search(r'"profilePage_(\d+)"', res.text)
+                if not match:
+                    raise ValueError("HTML fallback failed")
+                
+                user_id = match.group(1)
+                print("UserID from HTML")
+            except Exception:
+                raise ValueError("Could not resolve user_id")
+    cache[username] = user_id
+    save_cache(cache)
+    return user_id
 
 def save_cache(cache):
     with open(CACHE_FILE, "w") as f:
@@ -274,6 +328,8 @@ def handle_post(shortcode, session):
             json.dump(info_data, f, indent=2, ensure_ascii=False)
         print(f"Saved info JSON: {info_file}")
 
+    # Handle sidecar (carousel)
+
     if edges:
         expected_count = len(edges)
     else:
@@ -294,6 +350,7 @@ def handle_post(shortcode, session):
         for i, edge in enumerate(edges, start=1):
             node = edge["node"]
 
+            # Highest resolution = last display_resource
             highest_res = node["display_resources"][-1]["src"]
 
             possible_video = node.get("video_url")
@@ -302,7 +359,7 @@ def handle_post(shortcode, session):
                 download_video(possible_video, folder_path, i) # if has video in the node, grab the video instead of the thumbnail
             else:
                 download_photo(highest_res, folder_path, i)
-            
+
             if session.is_private:
                 delay = random.uniform(8, 15)
                 time.sleep(delay)
@@ -321,9 +378,10 @@ def handle_post(shortcode, session):
             else:
                 print("No video_url found (may need DASH parsing)")
         else:
+            # Single image post fallback
             highest_res = media["display_resources"][-1]["src"]
             download_photo(highest_res, folder_path, 1)
-        
+
         if session.is_private:
             delay = random.uniform(8, 15)
             time.sleep(delay)
@@ -342,7 +400,7 @@ def handle_story(story_username, session):
 
     query_url = (
         f"https://www.instagram.com/graphql/query/?query_hash={QUERY_HASH}&variables=%7B%22reel_ids%22%3A%5B{user_id}%5D%2C%22highlight_reel_ids%22%3A%5B%5D%2C%22precomposed_overlay%22%3Afalse%7D"
-    )
+    ) # 
 
     # need session id for highlights as they require accounts. manually fetch the query and put into an "input_query.json" file in the same dir as dl.py
 
@@ -361,6 +419,7 @@ def handle_story(story_username, session):
     # with open(input_file, "r", encoding="utf-8") as f:
     #     data = json.load(f)
 
+    # 🔍 highlight structure
     reels = data["data"]["reels_media"]
 
     if not reels:
@@ -404,6 +463,7 @@ def handle_story(story_username, session):
             
             info_file = os.path.join(folder_path, f"{item_id} info.json")
 
+            # load existing if it exists (optional but nice)
             if os.path.exists(info_file):
                 with open(info_file, "r", encoding="utf-8") as f:
                     existing_info = json.load(f)
@@ -499,6 +559,7 @@ def handle_highlight(highlight_id, session):
     #with open(input_file, "r", encoding="utf-8") as f:
     #    data = json.load(f)
 
+    # 🔍 highlight structure
     reels = data["data"]["reels_media"]
 
     if not reels:
@@ -520,6 +581,7 @@ def handle_highlight(highlight_id, session):
 
     info_file = os.path.join(folder_path, "info.json")
 
+    # load existing if it exists (optional but nice)
     if os.path.exists(info_file):
         with open(info_file, "r", encoding="utf-8") as f:
             existing_info = json.load(f)
@@ -639,6 +701,8 @@ def handle_reel(reel_shortcode, session):
 
     data = queryql.json()
 
+    #https://www.instagram.com/graphql/query/?doc_id=8845758582119845&variables=%7B%22shortcode%22%3A%22DWREVncD_Zx%22%2C%22fetch_tagged_user_count%22%3Anull%2C%22hoisted_comment_id%22%3Anull%2C%22hoisted_reply_id%22%3Anull%7D
+
     media = data["data"]["xdt_shortcode_media"]
 
     process_reel(media, data, session)
@@ -707,6 +771,7 @@ def process_reel(media, data, session):
             json.dump(info_data, f, indent=2, ensure_ascii=False)
         print(f"Saved info JSON: {info_file}")
 
+    # Handle sidecar (carousel)
     edges = media.get("edge_sidecar_to_children", {}).get("edges", [])
 
     video_filename = f"{username} [{shortcode}].mp4"
@@ -720,6 +785,7 @@ def process_reel(media, data, session):
         for i, edge in enumerate(edges, start=1):
             node = edge["node"]
 
+            # Highest resolution = last display_resource
             highest_res = node["display_resources"][-1]["src"]
 
             possible_video = node.get("video_url")
@@ -728,7 +794,7 @@ def process_reel(media, data, session):
                 download_reel(possible_video, reels_path, username, shortcode) # if has video in the node, grab the video instead of the thumbnail
             else:
                 download_photo(highest_res, reels_path, i)
-            
+
             if session.is_private:
                 delay = random.uniform(8, 15)
                 time.sleep(delay)
@@ -746,9 +812,10 @@ def process_reel(media, data, session):
             else:
                 print("No video_url found (may need DASH parsing)")
         else:
+            # Single image post fallback
             highest_res = media["display_resources"][-1]["src"]
             download_photo(highest_res, reels_path, 1)
-        
+
         if session.is_private:
             delay = random.uniform(8, 15)
             time.sleep(delay)
@@ -789,8 +856,8 @@ def main():
 
     post_pattern = r"instagram\.com/p/([A-Za-z0-9_-]+)"
     highlight_pattern = r"instagram\.com/stories/highlights/(\d+)"
-    reel_pattern = r"instagram\.com/reel/([A-Za-z0-9_-]+)"
-    story_pattern = r"instagram\.com/stories/([A-Za-z0-9_-]+)"
+    reel_pattern = r"instagram\.com/reel?/([A-Za-z0-9_-]+)"
+    story_pattern = r"instagram\.com/stories/([A-Za-z0-9._-]+)"
 
     post_match = re.search(post_pattern, post_url)
     highlight_match = re.search(highlight_pattern, post_url)
