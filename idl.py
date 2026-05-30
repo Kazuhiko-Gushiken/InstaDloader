@@ -267,7 +267,7 @@ def handle_post(shortcode, session):
     edges = media.get("edge_sidecar_to_children", {}).get("edges", [])
 
     if not edges and media.get("is_video"):
-        process_reel(media, data)
+        process_reel(media, data, session)
         return
     
     print("didnt work")
